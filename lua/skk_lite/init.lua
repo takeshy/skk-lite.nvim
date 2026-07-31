@@ -354,7 +354,7 @@ function M.compile_dictionary(directory)
   return result
 end
 
-function M.download_dictionary(directory)
+function M.download_dictionary(directory, on_complete)
   use_dictionary_directory(directory)
   local node = vim.fn.exepath("node")
   if node == "" then
@@ -370,12 +370,25 @@ function M.download_dictionary(directory)
   vim.notify("skk-lite: 辞書をダウンロードしています: " .. config.dictionary_dir, vim.log.levels.INFO)
   return vim.system({ node, scripts[1], "--output", config.dictionary_dir }, { text = true }, vim.schedule_wrap(function(result)
     if result.code == 0 then
-      vim.notify("skk-lite: 辞書をダウンロードしました。:SkkLiteCompileDictionary を実行してください", vim.log.levels.INFO)
+      if on_complete then
+        on_complete()
+      else
+        vim.notify("skk-lite: 辞書をダウンロードしました。:SkkLiteCompileDictionary を実行してください", vim.log.levels.INFO)
+      end
     else
       local message = vim.trim(result.stderr or result.stdout or "download failed")
       vim.notify("skk-lite: 辞書のダウンロードに失敗しました: " .. message, vim.log.levels.ERROR)
     end
   end))
+end
+
+function M.install_dictionary(directory)
+  return M.download_dictionary(directory, function()
+    local ok, result = pcall(M.compile_dictionary)
+    if not ok then
+      vim.notify("skk-lite: 辞書を生成できません: " .. tostring(result), vim.log.levels.ERROR)
+    end
+  end)
 end
 
 function M.setup(options)
@@ -412,6 +425,9 @@ function M.setup(options)
   end, {})
   vim.api.nvim_create_user_command("SkkLiteDownloadDictionary", function(command)
     M.download_dictionary(command.args ~= "" and command.args or nil)
+  end, { nargs = "?", complete = "dir" })
+  vim.api.nvim_create_user_command("SkkLiteInstallDictionary", function(command)
+    M.install_dictionary(command.args ~= "" and command.args or nil)
   end, { nargs = "?", complete = "dir" })
   vim.api.nvim_create_user_command("SkkLiteCompileDictionary", function(command)
     local ok, result = pcall(M.compile_dictionary, command.args ~= "" and command.args or nil)

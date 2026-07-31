@@ -38,6 +38,7 @@ function M.run(test)
   test("dictionary maintenance commands are installed", function()
     equal(vim.fn.exists(":SkkLiteDownloadDictionary"), 2)
     equal(vim.fn.exists(":SkkLiteCompileDictionary"), 2)
+    equal(vim.fn.exists(":SkkLiteInstallDictionary"), 2)
   end)
 
   test("command-line SKK resets after leaving the command line", function()

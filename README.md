@@ -19,7 +19,15 @@ Neovim専用のPure Lua SKKです。挿入モードとコマンドラインモ�
 
 ## インストール
 
-標準packageとして、プラグインディレクトリを次のように配置します。
+`lazy.nvim` を使う場合は次の設定だけでインストールできます。既定値で使うなら `setup()` は不要です。
+
+```lua
+{
+  "takeshy/skk-lite.nvim",
+}
+```
+
+プラグイン管理ツールを使わない場合は、標準packageとしてプラグインディレクトリを次のように配置します。
 
 ```text
 stdpath('data')/site/pack/skk-lite/start/skk-lite.nvim
@@ -67,7 +75,17 @@ nvim-data/
 
 約13MBの `dictionary.json` は最初の変換時に遅延読み込みされるため、Neovimの起動時には読み込みません。
 
-## 辞書のダウンロードとJSON生成
+## 辞書のインストール
+
+初回だけ次のコマンドを実行すると、辞書のダウンロードとJSON生成を続けて行います。
+
+```vim
+:SkkLiteInstallDictionary
+```
+
+保存先を指定する場合は `:SkkLiteInstallDictionary C:/skk/dictionary` のように指定できます。辞書のダウンロードにのみNode.js 18以降が必要です。
+
+### ダウンロードとJSON生成を個別に行う
 
 辞書の取得とJSON変換は分離されています。ダウンロード完了通知が出てからコンパイルしてください。
 
@@ -157,6 +175,7 @@ nvim --headless -u NONE -l scripts/compile_dictionary.lua C:\skk\dictionary
 | `:SkkLiteDisable` | SKKを無効化 |
 | `:SkkLiteToggle` | 有効・無効を切り替え |
 | `:SkkLiteHealth` | 辞書パス、ロード状態、状態ファイルを表示 |
+| `:SkkLiteInstallDictionary [directory]` | 辞書を取得し、JSONへ変換 |
 | `:SkkLiteDownloadDictionary [directory]` | 辞書を取得・展開 |
 | `:SkkLiteCompileDictionary [directory]` | `SKK-JISYO*` をJSONへ変換 |
 

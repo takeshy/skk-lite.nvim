@@ -37,8 +37,16 @@ dictionary_encoding は "auto"（既定）、"euc-jp"、"utf-8" を指定でき�
 ==============================================================================
 3. DICTIONARY                                      *skk-lite-dictionary*
 
-辞書の取得とJSON生成は別コマンドです。ダウンロード完了通知の後にコンパイル
-してください。
+辞書の取得とJSON生成は、次のコマンドでまとめて実行できます。
+
+  :SkkLiteInstallDictionary
+
+任意のディレクトリを指定する場合: >
+
+  :SkkLiteInstallDictionary C:/skk/dictionary
+<
+
+個別に実行する場合は、ダウンロード完了通知の後にコンパイルしてください。
 
   :SkkLiteDownloadDictionary
   :SkkLiteCompileDictionary
@@ -98,6 +106,8 @@ Escape       取り消して元の読みまたは最後の候補へ戻る
 :SkkLiteDisable        SKK を無効化
 :SkkLiteToggle         有効・無効を切替
 :SkkLiteHealth         辞書パス、ロード状態、状態ファイルを表示
+:SkkLiteInstallDictionary [directory]
+                       SKK辞書を取得し、dictionary.jsonを生成
 :SkkLiteDownloadDictionary [directory]
                        SKK辞書を取得・展開
 :SkkLiteCompileDictionary [directory]
