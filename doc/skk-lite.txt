@@ -1,0 +1,108 @@
+*skk-lite.txt*                        Pure Lua SKK for Neovim
+
+==============================================================================
+CONTENTS                                                           *skk-lite*
+
+1. Overview                                            |skk-lite-overview|
+2. Setup                                               |skk-lite-setup|
+3. Dictionary                                          |skk-lite-dictionary|
+4. Keys                                                |skk-lite-keys|
+5. Registration                                        |skk-lite-register|
+6. Commands                                            |skk-lite-commands|
+
+==============================================================================
+1. OVERVIEW                                         *skk-lite-overview*
+
+skk-lite.nvim は純 Lua の SKK です。挿入モードとコマンドラインモードに
+対応します。
+Clipboard 機能は含みません。
+
+辞書は最初の変換時に遅延読み込みされます。ユーザー辞書と学習履歴は既定で
+stdpath('data')/skk-lite/state.json に保存されます。
+
+==============================================================================
+2. SETUP                                               *skk-lite-setup*
+
+>lua
+  require("skk_lite").setup({
+    dictionary_dir = vim.fn.stdpath("data") .. "/skk-lite/dictionary",
+    state_path = vim.fn.stdpath("data") .. "/skk-lite/state.json",
+  })
+<
+
+setup() を省略した場合も上記と同じ既定値で自動設定されます。
+生成済みJSONを直接指定する場合は dictionary_path を使用します。
+dictionary_encoding は "auto"（既定）、"euc-jp"、"utf-8" を指定できます。
+
+==============================================================================
+3. DICTIONARY                                      *skk-lite-dictionary*
+
+辞書の取得とJSON生成は別コマンドです。ダウンロード完了通知の後にコンパイル
+してください。
+
+  :SkkLiteDownloadDictionary
+  :SkkLiteCompileDictionary
+
+任意のディレクトリを指定する場合: >
+
+  :SkkLiteDownloadDictionary C:/skk/dictionary
+  :SkkLiteCompileDictionary C:/skk/dictionary
+<
+
+取得対象は同梱の dictionary_sources.json で定義されています。展開済みの
+SKK-JISYO* を統合し、辞書ディレクトリの dictionary.json へ出力します。
+EUC-JP / UTF-8 は自動判定されます。
+
+スクリプトの直接実行: >
+
+  node scripts/download_dictionary.js --output C:\skk\dictionary
+  nvim --headless -u NONE -l scripts/compile_dictionary.lua C:\skk\dictionary
+<
+
+==============================================================================
+4. KEYS                                                  *skk-lite-keys*
+
+<C-j>       SKK を有効化。変換中は確定
+l / L       SKK を無効化 / 全角英数
+大文字      変換入力を開始
+;           sticky shift。変換中は送り仮名を開始
+Space       変換 / 次候補 / 次ページ
+x / X       前候補 / 現候補を削除
+<C-g>       候補を取り消して読みに戻る
+A S D F J K L
+            一覧の候補を直接選択
+Tab         学習済みの読みを補完
+q / <C-q>   カタカナ / 半角カタカナ
+/           Abbrev モード
+>           接頭辞・接尾辞変換
+zh/zj/zk/zl 左 / 下 / 上 / 右矢印
+z Space     全角空白
+
+n は文脈を見て保留されます。nka は「んか」、nna は「んな」、語末の nn は
+「ん」です。Space、Enter、数字、モード切替の前でも「ん」に確定します。
+
+==============================================================================
+5. REGISTRATION                                      *skk-lite-register*
+
+候補がない場合、または最終候補の次へ進むと登録ウィンドウが開きます。
+登録欄でも <C-j> で SKK を有効化できます。
+
+Enter        変換中は欄内へ確定。未変換時は登録
+Escape       取り消して元の読みまたは最後の候補へ戻る
+\u3042       Enter で Unicode 文字へ置換。¥u3042 / ￥u3042 も可
+
+==============================================================================
+6. COMMANDS                                            *skk-lite-commands*
+
+:SkkLiteEnable         SKK を有効化
+:SkkLiteDisable        SKK を無効化
+:SkkLiteToggle         有効・無効を切替
+:SkkLiteHealth         辞書パス、ロード状態、状態ファイルを表示
+:SkkLiteDownloadDictionary [directory]
+                       SKK辞書を取得・展開
+:SkkLiteCompileDictionary [directory]
+                       SKK辞書を統合してdictionary.jsonを生成
+
+現在のモードは g:skk_lite_mode からも参照できます。
+
+vim:tw=78:ts=8:noet:ft=help:norl:

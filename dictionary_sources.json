@@ -1,0 +1,10 @@
+{
+  "sourceBaseUrl": "https://skk-dev.github.io/dict",
+  "dictionaries": [
+    "SKK-JISYO.L",
+    "SKK-JISYO.geo",
+    "SKK-JISYO.jinmei",
+    "SKK-JISYO.propernoun",
+    "SKK-JISYO.station"
+  ]
+}
