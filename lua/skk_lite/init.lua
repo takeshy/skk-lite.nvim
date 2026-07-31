@@ -20,6 +20,7 @@ local config = {
 
 local sessions = {}
 local commandline_session = nil
+local commandline_preedit = ""
 local suspended_buffers = {}
 local commandline_suspended = false
 local configured = false
@@ -46,10 +47,6 @@ local function native_key(value)
   return vim.api.nvim_replace_termcodes(value, true, false, true)
 end
 
-local function commandline_refresh_keys(output)
-  return output ~= "" and native_key("<Space><BS>") or ""
-end
-
 local function insert_at_cursor(text)
   if text == "" then
     return
@@ -64,6 +61,23 @@ local function render_later(session, kind, buffer)
     end
     ui.render(session, kind, buffer)
   end)
+end
+
+local function commandline_delta(previous, committed, current)
+  return native_key(("<BS>"):rep(vim.fn.strchars(previous))) .. committed .. current
+end
+
+local function commandline_context_without_preedit(context, preedit)
+  if preedit == "" then
+    return context
+  end
+  local before = context.line:sub(1, context.position - 1)
+  if before:sub(-#preedit) ~= preedit then
+    return context
+  end
+  context.line = before:sub(1, #before - #preedit) .. context.line:sub(context.position)
+  context.position = context.position - #preedit
+  return context
 end
 
 local function splice_commandline(context, inserted_text)
@@ -107,6 +121,10 @@ local function open_registration(session, reading, kind, buffer, commandline_con
       suspended_buffers[buffer] = nil
       return
     end
+    -- The candidate list that led to registration belongs to the suspended
+    -- outer session.  Remove it before opening the registration window so it
+    -- cannot remain behind the window or reappear on the next input.
+    ui.clear(kind, buffer)
     local register_buffer = register.open({
       reading = reading,
       prepare = function(register_buffer)
@@ -131,6 +149,10 @@ local function open_registration(session, reading, kind, buffer, commandline_con
           commandline_suspended = false
         end
         local result = session:register_word(text)
+        -- Registration clears the outer composition.  Clear its extmark
+        -- synchronously as well; waiting for the scheduled render can leave
+        -- the old ▽ preedit visible after the registered word was inserted.
+        ui.clear(kind, buffer)
         if kind == "cmdline" then
           restore_commandline(commandline_context, result.insert)
         else
@@ -162,18 +184,26 @@ local function open_registration(session, reading, kind, buffer, commandline_con
   end)
 end
 
-function M._handle(kind, key, modifiers, fallback, direct_commandline)
+function M._handle(kind, key, modifiers, fallback)
   local buffer = kind == "insert" and vim.api.nvim_get_current_buf() or nil
   local session = get_session(kind, buffer)
+  local previous_commandline_preedit = kind == "cmdline" and commandline_preedit or ""
+  if kind == "cmdline" and key == "Escape" and previous_commandline_preedit ~= "" then
+    session:clear_composition()
+    commandline_preedit = ""
+    ui.clear(kind, buffer)
+    return commandline_delta(previous_commandline_preedit, "", "")
+  end
   local commandline_context = kind == "cmdline" and {
     type = vim.fn.getcmdtype(),
     line = vim.fn.getcmdline(),
     position = vim.fn.getcmdpos(),
   } or nil
-  local result = session:handle(key, modifiers)
-  if not (kind == "cmdline" and direct_commandline) then
-    render_later(session, kind, buffer)
+  if commandline_context then
+    commandline_context = commandline_context_without_preedit(commandline_context, previous_commandline_preedit)
   end
+  local result = session:handle(key, modifiers)
+  render_later(session, kind, buffer)
   if result.register then
     if kind == "insert" and vim.bo[buffer].filetype == "skk-lite-register" then
       session:decline_nested_registration()
@@ -183,26 +213,16 @@ function M._handle(kind, key, modifiers, fallback, direct_commandline)
     else
       open_registration(session, result.register, kind, buffer, commandline_context)
       if kind == "cmdline" then
+        commandline_preedit = ""
         return native_key("<C-c>")
       end
     end
   end
 
   local output = result.insert or ""
-  if kind == "cmdline" and direct_commandline then
-    local line, position = splice_commandline(commandline_context, output)
-    vim.fn.setcmdline(line, position)
-    -- Command-line input runs in its own key loop. Scheduled callbacks may
-    -- not run until a native key is processed, so update text and candidates
-    -- synchronously while this non-expression mapping is active.
-    ui.render(session, kind)
-    if key == "Escape" or not result.handled then
-      return native_key(fallback)
-    end
-    -- Windows Terminal can keep the command-line grid stale after
-    -- setcmdline() until actual text is edited. Insert and immediately remove
-    -- one ASCII space to refresh the grid without changing text or cursor.
-    return commandline_refresh_keys(output)
+  if kind == "cmdline" then
+    commandline_preedit = session:preedit()
+    output = commandline_delta(previous_commandline_preedit, output, commandline_preedit)
   end
   if key == "Escape" then
     ui.clear(kind, buffer)
@@ -242,11 +262,13 @@ end
 
 local function set_mapping(mode, lhs, key, modifiers, fallback)
   local kind = mode == "i" and "insert" or "cmdline"
-  if mode == "c" then
+  if kind == "cmdline" then
     vim.keymap.set(mode, lhs, function()
-      local output = M._handle(kind, key, modifiers, fallback or lhs, true)
+      local output = M._handle(kind, key, modifiers, fallback or lhs)
       if output ~= "" then
-        vim.api.nvim_feedkeys(output, "n", false)
+        -- Match skkeleton's command-line strategy: feed the rewritten
+        -- preedit as typed input so external cmdline UIs receive updates.
+        vim.fn.feedkeys(output, "nit")
       end
     end, {
       silent = true,
@@ -266,12 +288,12 @@ end
 
 local function install_commandline_toggle()
   vim.keymap.set("c", "<C-j>", function()
-    local output = M._handle("cmdline", "j", { ctrl = true }, "<C-j>", true)
+    local output = M._handle("cmdline", "j", { ctrl = true }, "<C-j>")
     if get_session("cmdline").state.enabled then
       install_commandline_mappings()
     end
     if output ~= "" then
-      vim.api.nvim_feedkeys(output, "n", false)
+      vim.fn.feedkeys(output, "nit")
     end
   end, {
     silent = true,
@@ -473,6 +495,15 @@ function M.setup(options)
   end, { nargs = "?", complete = "dir" })
 
   local group = vim.api.nvim_create_augroup("skk_lite", { clear = true })
+  vim.api.nvim_create_autocmd("User", {
+    group = group,
+    pattern = "VeryLazy",
+    callback = function()
+      if config.mappings then
+        install_mappings()
+      end
+    end,
+  })
   vim.api.nvim_create_autocmd("BufWipeout", {
     group = group,
     callback = function(event)
@@ -495,6 +526,7 @@ function M.setup(options)
   vim.api.nvim_create_autocmd("CmdlineLeave", {
     group = group,
     callback = function()
+      commandline_preedit = ""
       if commandline_session and not commandline_suspended then
         -- Each new command line starts in native ASCII mode.  Keeping the
         -- previous kana mode makes commands such as :write look like SKK
@@ -516,7 +548,6 @@ M._commandline_session = function()
   return get_session("cmdline")
 end
 M._splice_commandline = splice_commandline
-M._commandline_refresh_keys = commandline_refresh_keys
 M.dictionary_dir = function()
   return config.dictionary_dir
 end

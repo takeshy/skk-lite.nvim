@@ -45,6 +45,22 @@ local function candidate_lines(session)
   return nil
 end
 
+local function cmdline_float_position(line_count)
+  if vim.g.ui_cmdline_pos ~= nil then
+    local position = vim.g.ui_cmdline_pos -- (1, 0)-indexed screen position
+    return {
+      row = math.min(position[1], math.max(0, vim.o.lines - line_count - 2)),
+      col = math.max(0, position[2]),
+      zindex = 250,
+    }
+  end
+  return {
+    row = math.max(0, vim.o.lines - line_count - 3),
+    col = 1,
+    zindex = 150,
+  }
+end
+
 local function show_float(key, lines, kind)
   if not lines or #lines == 0 then
     close_float(key)
@@ -62,16 +78,17 @@ local function show_float(key, lines, kind)
   end
   local config
   if kind == "cmdline" then
+    local position = cmdline_float_position(#lines)
     config = {
       relative = "editor",
-      row = math.max(0, vim.o.lines - #lines - 3),
-      col = 1,
+      row = position.row,
+      col = position.col,
       width = math.min(width, math.max(20, vim.o.columns - 4)),
       height = #lines,
       style = "minimal",
       border = "rounded",
       focusable = false,
-      zindex = 150,
+      zindex = position.zindex,
     }
   else
     config = {
@@ -117,9 +134,6 @@ function M.render(session, kind, buffer)
     end
   end
   local lines = candidate_lines(session)
-  if kind == "cmdline" and not lines and session:preedit() ~= "" then
-    lines = { session:preedit() }
-  end
   show_float(key, lines, kind)
   if kind == "cmdline" then
     -- Command-line mappings render synchronously: the widget owns preedit,
@@ -152,5 +166,8 @@ function M.clear_all()
     close_float(key)
   end
 end
+
+M._namespace = namespace
+M._cmdline_float_position = cmdline_float_position
 
 return M

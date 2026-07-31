@@ -107,8 +107,10 @@ function M.open(options)
 
   vim.keymap.set("i", "<CR>", accept, { buffer = buffer, silent = true })
   vim.keymap.set("i", "<Esc>", cancel, { buffer = buffer, silent = true })
+  vim.keymap.set("i", "<C-g>", cancel, { buffer = buffer, silent = true })
   vim.keymap.set("n", "<CR>", accept, { buffer = buffer, silent = true })
   vim.keymap.set("n", "q", cancel, { buffer = buffer, silent = true })
+  vim.keymap.set("n", "<C-g>", cancel, { buffer = buffer, silent = true })
   vim.cmd("startinsert")
   return buffer
 end

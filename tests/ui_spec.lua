@@ -41,16 +41,6 @@ function M.run(test)
     vim.api.nvim_buf_delete(buffer, { force = true })
   end)
 
-  test("command-line preedit opens a floating widget", function()
-    local session = Session.new({})
-    session:enable()
-    session:handle("K")
-    local windows_before = #vim.api.nvim_list_wins()
-    ui.render(session, "cmdline")
-    equal(#vim.api.nvim_list_wins(), windows_before + 1)
-    ui.clear("cmdline")
-  end)
-
   test("command-line candidate pages open a floating window", function()
     local session = Session.new({})
     session:enable()
@@ -62,6 +52,14 @@ function M.run(test)
     ui.render(session, "cmdline")
     equal(#vim.api.nvim_list_wins(), windows_before + 1)
     ui.clear("cmdline")
+  end)
+
+  test("command-line preedit follows external cmdline UI", function()
+    local previous = vim.g.ui_cmdline_pos
+    vim.g.ui_cmdline_pos = { 7, 24 }
+    local position = ui._cmdline_float_position(1)
+    equal(position, { row = 7, col = 24, zindex = 250 })
+    vim.g.ui_cmdline_pos = previous
   end)
 end
 

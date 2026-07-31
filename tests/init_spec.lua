@@ -26,13 +26,6 @@ function M.run(test)
     equal(line, "a" .. japanese .. "Xb")
     equal(position, 6)
   end)
-
-  test("command-line commits request a native grid refresh", function()
-    local refresh = vim.api.nvim_replace_termcodes("<Space><BS>", true, false, true)
-    equal(skk._commandline_refresh_keys("わ"), refresh)
-    equal(skk._commandline_refresh_keys("私"), refresh)
-    equal(skk._commandline_refresh_keys(""), "")
-  end)
 end
 
 return M

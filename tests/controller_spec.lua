@@ -1,6 +1,7 @@
 local engine = require("skk_lite.engine")
 local register = require("skk_lite.register")
 local skk = require("skk_lite")
+local ui = require("skk_lite.ui")
 
 local M = {}
 
@@ -34,6 +35,15 @@ local function open_missing_registration(session, reading)
   return register.active().buffer
 end
 
+local function candidate_float_exists()
+  for _, window in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_config(window).relative == "cursor" then
+      return true
+    end
+  end
+  return false
+end
+
 function M.run(test)
   local dictionary_path = vim.fn.tempname() .. ".json"
   local state_path = vim.fn.tempname() .. ".json"
@@ -46,14 +56,26 @@ function M.run(test)
     equal(vim.fn.exists(":SkkLiteInstallDictionary"), 2)
   end)
 
+  test("VeryLazy restores mappings overwritten by distributions", function()
+    vim.keymap.set("i", ".", ".<C-g>u")
+    vim.keymap.set("i", ",", ",<C-g>u")
+    vim.keymap.set("i", ";", ";<C-g>u")
+
+    vim.api.nvim_exec_autocmds("User", { pattern = "VeryLazy" })
+    equal(vim.fn.maparg(".", "i", false, true).desc, "skk-lite: .")
+    equal(vim.fn.maparg(",", "i", false, true).desc, "skk-lite: ,")
+    equal(vim.fn.maparg(";", "i", false, true).desc, "skk-lite: ;")
+  end)
+
   test("command-line SKK resets after leaving the command line", function()
     local commandline = skk._commandline_session()
     equal(vim.fn.maparg("w", "c"), "")
     skk.enable("cmdline")
     commandline:handle("a")
     equal(commandline.state.enabled, true)
-    equal(vim.fn.maparg("w", "c", false, true).lhs, "w")
-    equal(vim.fn.maparg("w", "c", false, true).expr, 0)
+    local commandline_mapping = vim.fn.maparg("w", "c", false, true)
+    equal(commandline_mapping.lhs, "w")
+    equal(commandline_mapping.expr, 0)
 
     vim.api.nvim_exec_autocmds("CmdlineLeave", {})
     equal(commandline.state.enabled, false)
@@ -68,6 +90,30 @@ function M.run(test)
     equal(commandline_input("<C-j>Watasi<BS><CR><CR>"), "わた")
   end)
 
+  test("command-line Escape cancels preedit without leaving the command line", function()
+    local commandline = skk._commandline_session()
+    commandline:enable()
+    skk._handle("cmdline", "K", {}, "K")
+    skk._handle("cmdline", "a", {}, "a")
+    assert(commandline:preedit() ~= "", "command-line preedit was not created")
+
+    local result = skk._handle("cmdline", "Escape", {}, "<Esc>")
+    equal(commandline:preedit(), "")
+    assert(result:find(vim.api.nvim_replace_termcodes("<BS>", true, false, true), 1, true), "preedit was not erased")
+  end)
+
+  test("command-line preedit is rewritten in the real command line", function()
+    vim.api.nvim_exec_autocmds("CmdlineLeave", {})
+    local commandline = skk._commandline_session()
+    commandline:enable()
+    local first = skk._handle("cmdline", "K", {}, "K")
+    equal(first, "▽k")
+    local second = skk._handle("cmdline", "a", {}, "a")
+    local backspace = vim.api.nvim_replace_termcodes("<BS>", true, false, true)
+    equal(second, backspace .. backspace .. "▽か")
+    vim.api.nvim_exec_autocmds("CmdlineLeave", {})
+  end)
+
   test("registration opens with kana input enabled", function()
     vim.cmd("enew!")
     local origin = vim.api.nvim_get_current_buf()
@@ -80,6 +126,39 @@ function M.run(test)
 
     buffer_mapping(register_buffer, "<Esc>")()
     equal(register.active(), nil)
+  end)
+
+  test("Ctrl-G cancels registration", function()
+    vim.cmd("enew!")
+    local origin = vim.api.nvim_get_current_buf()
+    local session = skk._buffer_session(origin)
+    session:enable()
+    local register_buffer = open_missing_registration(session, "きゃんせる")
+
+    buffer_mapping(register_buffer, "<C-g>")()
+    equal(register.active(), nil)
+    equal(session.state.composing, true)
+    equal(session.state.kana, "きゃんせる")
+  end)
+
+  test("registration closes the exhausted candidate popup", function()
+    vim.cmd("enew!")
+    local origin = vim.api.nvim_get_current_buf()
+    local session = skk._buffer_session(origin)
+    session:enable()
+    session:start_composition()
+    session.state.kana = "こうほ"
+    session.state.candidates = { "一", "二", "三", "四", "五" }
+    session.state.candidate_index = 5
+    session.state.showing_candidate = true
+
+    skk._handle("insert", " ", {}, "<Space>")
+    assert(vim.wait(500, function()
+      return register.active() ~= nil
+    end), "registration window did not open")
+    equal(candidate_float_exists(), false)
+
+    buffer_mapping(register.active().buffer, "<C-g>")()
   end)
 
   test("registration commits a pending n before accepting", function()
@@ -99,6 +178,23 @@ function M.run(test)
     enter()
     equal(register.active(), nil)
     equal(vim.api.nvim_buf_get_lines(origin, 0, -1, false), { "ん" })
+  end)
+
+  test("registration clears stale outer preedit immediately", function()
+    vim.cmd("enew!")
+    local origin = vim.api.nvim_get_current_buf()
+    local session = skk._buffer_session(origin)
+    session:enable()
+    local register_buffer = open_missing_registration(session, "のこり")
+    vim.api.nvim_buf_set_extmark(origin, ui._namespace, 0, 0, {
+      virt_text = { { "▽のこり", "SkkLitePreedit" } },
+      virt_text_pos = "inline",
+    })
+    vim.api.nvim_buf_set_lines(register_buffer, 0, -1, false, { "残り" })
+
+    buffer_mapping(register_buffer, "<CR>")()
+    equal(register.active(), nil)
+    equal(vim.api.nvim_buf_get_extmarks(origin, -1, 0, -1, {}), {})
   end)
 
   test("nested missing conversion does not replace the registration window", function()

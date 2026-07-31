@@ -370,6 +370,10 @@ function Session:cancel_candidates()
   if not self.state.composing then
     return false
   end
+  if not self.state.showing_candidate then
+    self:clear_composition()
+    return true
+  end
   engine.invalidate_candidates(self.state)
   self.state.mode = engine.STATE.SKK_HENKAN
   return true
