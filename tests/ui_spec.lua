@@ -40,6 +40,29 @@ function M.run(test)
     ui.clear("insert", buffer)
     vim.api.nvim_buf_delete(buffer, { force = true })
   end)
+
+  test("command-line preedit opens a floating widget", function()
+    local session = Session.new({})
+    session:enable()
+    session:handle("K")
+    local windows_before = #vim.api.nvim_list_wins()
+    ui.render(session, "cmdline")
+    equal(#vim.api.nvim_list_wins(), windows_before + 1)
+    ui.clear("cmdline")
+  end)
+
+  test("command-line candidate pages open a floating window", function()
+    local session = Session.new({})
+    session:enable()
+    session.state.composing = true
+    session.state.showing_candidate = true
+    session.state.candidates = { "一", "二", "三", "四", "五", "六" }
+    session.state.candidate_index = 5
+    local windows_before = #vim.api.nvim_list_wins()
+    ui.render(session, "cmdline")
+    equal(#vim.api.nvim_list_wins(), windows_before + 1)
+    ui.clear("cmdline")
+  end)
 end
 
 return M

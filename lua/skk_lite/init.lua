@@ -46,6 +46,10 @@ local function native_key(value)
   return vim.api.nvim_replace_termcodes(value, true, false, true)
 end
 
+local function commandline_refresh_keys(output)
+  return output ~= "" and native_key("<Space><BS>") or ""
+end
+
 local function insert_at_cursor(text)
   if text == "" then
     return
@@ -75,7 +79,10 @@ local function restore_commandline(context, inserted_text)
   end
   local line, position = splice_commandline(context, inserted_text)
   local opener = ({ [":"] = ":", ["/"] = "/", ["?"] = "?" })[context.type] or ":"
-  vim.api.nvim_feedkeys(native_key(opener), "n", false)
+  -- Registration is accepted from an insert-mode mapping. Force Normal mode
+  -- before reopening the original command line, otherwise the opener can be
+  -- inserted into the buffer instead of starting :, /, or ? input.
+  vim.api.nvim_feedkeys(native_key("<C-\\><C-n>" .. opener), "n", false)
   local attempts = 0
   local function apply()
     attempts = attempts + 1
@@ -155,7 +162,7 @@ local function open_registration(session, reading, kind, buffer, commandline_con
   end)
 end
 
-function M._handle(kind, key, modifiers, fallback)
+function M._handle(kind, key, modifiers, fallback, direct_commandline)
   local buffer = kind == "insert" and vim.api.nvim_get_current_buf() or nil
   local session = get_session(kind, buffer)
   local commandline_context = kind == "cmdline" and {
@@ -164,7 +171,9 @@ function M._handle(kind, key, modifiers, fallback)
     position = vim.fn.getcmdpos(),
   } or nil
   local result = session:handle(key, modifiers)
-  render_later(session, kind, buffer)
+  if not (kind == "cmdline" and direct_commandline) then
+    render_later(session, kind, buffer)
+  end
   if result.register then
     if kind == "insert" and vim.bo[buffer].filetype == "skk-lite-register" then
       session:decline_nested_registration()
@@ -180,6 +189,21 @@ function M._handle(kind, key, modifiers, fallback)
   end
 
   local output = result.insert or ""
+  if kind == "cmdline" and direct_commandline then
+    local line, position = splice_commandline(commandline_context, output)
+    vim.fn.setcmdline(line, position)
+    -- Command-line input runs in its own key loop. Scheduled callbacks may
+    -- not run until a native key is processed, so update text and candidates
+    -- synchronously while this non-expression mapping is active.
+    ui.render(session, kind)
+    if key == "Escape" or not result.handled then
+      return native_key(fallback)
+    end
+    -- Windows Terminal can keep the command-line grid stale after
+    -- setcmdline() until actual text is edited. Insert and immediately remove
+    -- one ASCII space to refresh the grid without changing text or cursor.
+    return commandline_refresh_keys(output)
+  end
   if key == "Escape" then
     ui.clear(kind, buffer)
     return output .. native_key(fallback)
@@ -218,6 +242,18 @@ end
 
 local function set_mapping(mode, lhs, key, modifiers, fallback)
   local kind = mode == "i" and "insert" or "cmdline"
+  if mode == "c" then
+    vim.keymap.set(mode, lhs, function()
+      local output = M._handle(kind, key, modifiers, fallback or lhs, true)
+      if output ~= "" then
+        vim.api.nvim_feedkeys(output, "n", false)
+      end
+    end, {
+      silent = true,
+      desc = "skk-lite: " .. key,
+    })
+    return
+  end
   vim.keymap.set(mode, lhs, function()
     return M._handle(kind, key, modifiers, fallback or lhs)
   end, {
@@ -230,14 +266,14 @@ end
 
 local function install_commandline_toggle()
   vim.keymap.set("c", "<C-j>", function()
-    local output = M._handle("cmdline", "j", { ctrl = true }, "<C-j>")
+    local output = M._handle("cmdline", "j", { ctrl = true }, "<C-j>", true)
     if get_session("cmdline").state.enabled then
       install_commandline_mappings()
     end
-    return output
+    if output ~= "" then
+      vim.api.nvim_feedkeys(output, "n", false)
+    end
   end, {
-    expr = true,
-    replace_keycodes = false,
     silent = true,
     desc = "skk-lite: enable command-line SKK",
   })
@@ -480,6 +516,7 @@ M._commandline_session = function()
   return get_session("cmdline")
 end
 M._splice_commandline = splice_commandline
+M._commandline_refresh_keys = commandline_refresh_keys
 M.dictionary_dir = function()
   return config.dictionary_dir
 end

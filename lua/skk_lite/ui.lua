@@ -121,6 +121,15 @@ function M.render(session, kind, buffer)
     lines = { session:preedit() }
   end
   show_float(key, lines, kind)
+  if kind == "cmdline" then
+    -- Command-line mappings render synchronously: the widget owns preedit,
+    -- while only committed text is copied into the native command line.
+    -- setcmdline() updates the internal text during a command-line mapping,
+    -- but some TUI clients do not flush that grid until the next native key.
+    -- render() is scheduled after the mapping, so force the updated grid out
+    -- once the mapping callback has returned.
+    vim.cmd("redraw!")
+  end
   local mode = session:mode_text()
   vim.g.skk_lite_mode = mode
   if session.state.enabled and kind ~= "cmdline" and last_modes[key] ~= mode then

@@ -18,6 +18,11 @@ local function buffer_mapping(buffer, lhs)
   end)
 end
 
+local function commandline_input(keys)
+  vim.fn.feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "t")
+  return vim.fn.input(":")
+end
+
 local function open_missing_registration(session, reading)
   session:clear_composition()
   session:start_composition()
@@ -48,12 +53,19 @@ function M.run(test)
     commandline:handle("a")
     equal(commandline.state.enabled, true)
     equal(vim.fn.maparg("w", "c", false, true).lhs, "w")
+    equal(vim.fn.maparg("w", "c", false, true).expr, 0)
 
     vim.api.nvim_exec_autocmds("CmdlineLeave", {})
     equal(commandline.state.enabled, false)
     equal(commandline.state.roman, "")
     equal(vim.fn.maparg("w", "c"), "")
     equal(vim.fn.maparg("<C-j>", "c", false, true).lhs, "<C-J>")
+    equal(vim.fn.maparg("<C-j>", "c", false, true).expr, 0)
+  end)
+
+  test("command-line mappings synchronously update Japanese text", function()
+    equal(commandline_input('echo "<C-j>watasi<CR>'), 'echo "わたし')
+    equal(commandline_input("<C-j>Watasi<BS><CR><CR>"), "わた")
   end)
 
   test("registration opens with kana input enabled", function()
