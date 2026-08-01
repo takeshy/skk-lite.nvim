@@ -128,6 +128,26 @@ function M.run(test)
     equal(register.active(), nil)
   end)
 
+  test("registration can select an optional llm-rewrite candidate", function()
+    local previous_module = package.loaded.llm_rewrite
+    local previous_select = vim.ui.select
+    package.loaded.llm_rewrite = {
+      suggest = function(reading, callback)
+        equal(reading, "こうせい")
+        callback({ "校正", "構成" })
+      end,
+    }
+    vim.ui.select = function(items, _, callback)
+      callback(items[2])
+    end
+    local register_buffer = open_missing_registration(skk._buffer_session(), "こうせい")
+    buffer_mapping(register_buffer, "<C-l>")()
+    equal(vim.api.nvim_buf_get_lines(register_buffer, 0, -1, false), { "構成" })
+    buffer_mapping(register_buffer, "<C-g>")()
+    vim.ui.select = previous_select
+    package.loaded.llm_rewrite = previous_module
+  end)
+
   test("Ctrl-G cancels registration", function()
     vim.cmd("enew!")
     local origin = vim.api.nvim_get_current_buf()

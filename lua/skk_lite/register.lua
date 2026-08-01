@@ -74,6 +74,36 @@ function M.open(options)
     origin_cursor = origin_cursor,
   }
 
+  local llm_ok, llm_rewrite = pcall(require, "llm_rewrite")
+
+  local function suggest_with_llm()
+    if not llm_ok or type(llm_rewrite.suggest) ~= "function" then
+      return
+    end
+    local current = active
+    vim.api.nvim_win_set_config(window, { title = " ⠋ LLM候補を取得中… ", title_pos = "center" })
+    llm_rewrite.suggest(options.reading, function(candidates, err)
+      if active ~= current or not vim.api.nvim_buf_is_valid(buffer) then
+        return
+      end
+      vim.api.nvim_win_set_config(window, { title = " " .. title .. " ", title_pos = "center" })
+      if err then
+        vim.notify("skk-lite: LLM候補の取得に失敗しました: " .. tostring(err), vim.log.levels.ERROR)
+        return
+      end
+      vim.ui.select(candidates, { prompt = "単語登録: " .. options.reading }, function(choice)
+        if choice and active == current and vim.api.nvim_buf_is_valid(buffer) then
+          vim.api.nvim_buf_set_lines(buffer, 0, -1, false, { choice })
+          if vim.api.nvim_win_is_valid(window) then
+            vim.api.nvim_set_current_win(window)
+            vim.api.nvim_win_set_cursor(window, { 1, #choice })
+            vim.cmd("startinsert")
+          end
+        end
+      end)
+    end)
+  end
+
   local function cancel()
     close()
     if options.on_cancel then
@@ -108,6 +138,13 @@ function M.open(options)
   vim.keymap.set("i", "<CR>", accept, { buffer = buffer, silent = true })
   vim.keymap.set("i", "<Esc>", cancel, { buffer = buffer, silent = true })
   vim.keymap.set("i", "<C-g>", cancel, { buffer = buffer, silent = true })
+  if llm_ok and type(llm_rewrite.suggest) == "function" then
+    vim.keymap.set({ "i", "n" }, "<C-l>", suggest_with_llm, {
+      buffer = buffer,
+      silent = true,
+      desc = "skk-lite: get registration candidates from llm-rewrite",
+    })
+  end
   vim.keymap.set("n", "<CR>", accept, { buffer = buffer, silent = true })
   vim.keymap.set("n", "q", cancel, { buffer = buffer, silent = true })
   vim.keymap.set("n", "<C-g>", cancel, { buffer = buffer, silent = true })

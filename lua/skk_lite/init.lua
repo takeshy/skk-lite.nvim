@@ -450,15 +450,15 @@ function M.install_dictionary(directory)
 end
 
 function M.setup(options)
-  if configured then
-    return
-  end
+  local was_configured = configured
   configured = true
   options = options or {}
   config = vim.tbl_deep_extend("force", config, options)
   config.dictionary_dir = vim.fs.normalize(vim.fn.expand(config.dictionary_dir))
-  if options.dictionary_path == nil then
+  if options.dictionary_dir ~= nil and options.dictionary_path == nil then
     config.dictionary_path = vim.fs.joinpath(config.dictionary_dir, "dictionary.json")
+  elseif options.dictionary_path ~= nil then
+    config.dictionary_path = vim.fs.normalize(vim.fn.expand(config.dictionary_path))
   else
     config.dictionary_path = vim.fs.normalize(vim.fn.expand(config.dictionary_path))
   end
@@ -467,6 +467,9 @@ function M.setup(options)
   ui.setup()
   if config.mappings then
     install_mappings()
+  end
+  if was_configured then
+    return
   end
 
   vim.api.nvim_create_user_command("SkkLiteEnable", function()

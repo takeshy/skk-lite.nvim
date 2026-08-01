@@ -192,16 +192,10 @@ function M.consume_roman_chunk(state)
     return "ん"
   end
 
-  -- Keep an exact "nn" pending until the following key is known.  This
-  -- allows the second n to start the next syllable ("nna" -> "んな") while
-  -- still committing a terminal "nn" as a single "ん".
+  -- A second n explicitly terminates ん.  The following vowel therefore
+  -- starts a new syllable ("nna" -> "んあ", "funniki" -> "ふんいき").
   if roman == "nn" then
-    return ""
-  end
-  if #roman >= 3 and roman:sub(1, 2) == "nn" then
-    local next_character = roman:sub(3, 3)
-    local carry_second_n = next_character:match("^[aiueoy]$") ~= nil
-    state.roman = carry_second_n and roman:sub(2) or roman:sub(3)
+    state.roman = ""
     M.append_composing_kana(state, "ん")
     return "ん"
   end
