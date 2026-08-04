@@ -80,9 +80,16 @@ local function decode(content, encoding, path)
     return content
   end
   local source_encoding = encoding == "auto" and "euc-jp" or encoding
-  local converted = vim.fn.iconv(content, source_encoding, "utf-8")
-  if content ~= "" and converted == "" then
-    error(("文字コードを変換できません: %s (%s -> utf-8)"):format(path, source_encoding))
+  if source_encoding ~= "euc-jp" and source_encoding ~= "eucjp" then
+    error(("未対応の文字コードです: %s (%s)"):format(path, source_encoding))
+  end
+  local ok, converted = pcall(require("skk_lite.encoding.euc_jp").decode, content)
+  if not ok then
+    error(("文字コードを変換できません: %s (%s -> utf-8): %s"):format(
+      path,
+      source_encoding,
+      converted
+    ))
   end
   return converted
 end

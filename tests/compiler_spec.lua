@@ -39,11 +39,14 @@ function M.run(test)
     vim.fn.delete(directory, "rf")
   end)
 
-  test("compiler converts EUC-JP dictionaries", function()
+  test("compiler converts EUC-JP dictionaries with Pure Lua", function()
     local directory = vim.fn.tempname()
     vim.fn.mkdir(directory, "p")
     local source = "かな /仮名/かな/\n"
-    local encoded = vim.fn.iconv(source, "utf-8", "euc-jp")
+    local encoded = string.char(
+      0xa4, 0xab, 0xa4, 0xca, 0x20, 0x2f, 0xb2, 0xbe, 0xcc,
+      0xbe, 0x2f, 0xa4, 0xab, 0xa4, 0xca, 0x2f, 0x0a
+    )
     local file = assert(io.open(directory .. "/SKK-JISYO.euc", "wb"))
     file:write(encoded)
     file:close()
@@ -52,6 +55,7 @@ function M.run(test)
     equal(read_json(result.output_path)["かな"], { "仮名", "かな" })
     vim.fn.delete(directory, "rf")
   end)
+
 end
 
 return M
