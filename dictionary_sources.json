@@ -1,5 +1,5 @@
 {
-  "sourceBaseUrl": "https://skk-dev.github.io/dict",
+  "sourceBaseUrl": "https://raw.githubusercontent.com/skk-dev/dict/master",
   "dictionaries": [
     "SKK-JISYO.L",
     "SKK-JISYO.geo",

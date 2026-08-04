@@ -68,6 +68,21 @@ local function clear_key(key)
   state.cache[key] = nil
 end
 
+local function lookup_cached(key)
+  if state.cache[key] then
+    return state.cache[key]
+  end
+  load_base()
+  local data = persistent_data()
+  local candidates = merge({
+    data.history[key] or {},
+    data.user_dict[key] or {},
+    state.base and state.base[key] or {},
+  })
+  state.cache[key] = candidates
+  return candidates
+end
+
 function M.setup(options)
   options = options or {}
   state.path = vim.fs.normalize(vim.fn.expand(options.path or default_path()))
@@ -87,25 +102,16 @@ function M.load()
 end
 
 function M.lookup(key)
-  if state.cache[key] then
-    return vim.deepcopy(state.cache[key])
-  end
-  load_base()
-  local data = persistent_data()
-  local candidates = merge({
-    data.history[key] or {},
-    data.user_dict[key] or {},
-    state.base and state.base[key] or {},
-  })
-  state.cache[key] = candidates
-  return vim.deepcopy(candidates)
+  -- Candidates are strings, so a shallow copy protects the cache without the
+  -- recursive cost of vim.deepcopy() on every conversion.
+  return vim.list_slice(lookup_cached(key))
 end
 
 function M.lookup_any(key_specs)
   local result = {}
   local seen = {}
   for _, spec in ipairs(key_specs) do
-    for _, candidate in ipairs(M.lookup(spec.key)) do
+    for _, candidate in ipairs(lookup_cached(spec.key)) do
       local converted = spec.numbers and engine.apply_numeric_candidate(candidate, spec.numbers) or candidate
       local candidate_word = word(converted)
       if candidate_word ~= "" and not seen[candidate_word] then

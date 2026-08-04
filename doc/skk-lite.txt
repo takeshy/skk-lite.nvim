@@ -27,12 +27,14 @@ stdpath('data')/skk-lite/state.json に保存されます。
   require("skk_lite").setup({
     dictionary_dir = vim.fn.stdpath("data") .. "/skk-lite/dictionary",
     state_path = vim.fn.stdpath("data") .. "/skk-lite/state.json",
+    state_save_delay = 200,
   })
 <
 
 setup() を省略した場合も上記と同じ既定値で自動設定されます。
 生成済みJSONを直接指定する場合は dictionary_path を使用します。
 dictionary_encoding は "auto"（既定）、"euc-jp"、"utf-8" を指定できます。
+学習データは state_save_delay ミリ秒（既定200）にまとめ、原子的に保存します。
 
 ==============================================================================
 3. DICTIONARY                                      *skk-lite-dictionary*
@@ -57,15 +59,17 @@ dictionary_encoding は "auto"（既定）、"euc-jp"、"utf-8" を指定でき�
   :SkkLiteCompileDictionary C:/skk/dictionary
 <
 
-取得対象は同梱の dictionary_sources.json で定義されています。展開済みの
-SKK-JISYO* を統合し、辞書ディレクトリの dictionary.json へ出力します。
+取得対象は同梱の dictionary_sources.json で定義されています。公式リポジトリの
+未圧縮 SKK-JISYO* を取得・統合し、dictionary.json へ出力します。
 EUC-JP / UTF-8 は自動判定されます。
 
 スクリプトの直接実行: >
 
-  node scripts/download_dictionary.js --output C:\skk\dictionary
+  nvim --headless -u NONE -l scripts/download_dictionary.lua C:\skk\dictionary
   nvim --headless -u NONE -l scripts/compile_dictionary.lua C:\skk\dictionary
 <
+
+辞書の取得には curl を使用します。Node.js、Denops、gzipは不要です。
 
 ==============================================================================
 4. KEYS                                                  *skk-lite-keys*
@@ -85,6 +89,11 @@ q / <C-q>   カタカナ / 半角カタカナ
 >           接頭辞・接尾辞変換
 zh/zj/zk/zl 左 / 下 / 上 / 右矢印
 z Space     全角空白
+
+mappings=true の場合、通常時の挿入モードマッピングはバッファローカルの
+<C-j> のみです。SKK有効中だけ入力キーを一時的に設定し、無効化時には既存の
+マッピングを復元します。同じキーを使う補完・snippet・autopairsはSKK有効中
+にはSKKが優先されます。統合を独自に行う場合は mappings=false を指定します。
 
 n は次の入力を待ち、nn で「ん」を確定します。funniki は「ふんいき」、
 nna は「んあ」です。Space、Enter、数字、モード切替の前でも「ん」に

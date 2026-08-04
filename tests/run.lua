@@ -18,6 +18,7 @@ end
 
 require("engine_spec").run(test)
 require("dictionary_spec").run(test)
+require("store_spec").run(test)
 require("compiler_spec").run(test)
 require("session_spec").run(test)
 require("init_spec").run(test)

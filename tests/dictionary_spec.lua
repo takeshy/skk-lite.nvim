@@ -38,6 +38,12 @@ function M.run(test)
     equal(dictionary.lookup("かんじ"), { "漢字", "幹事", "感じ", "注目;注釈" })
   end)
 
+  test("mutating lookup results does not poison the cache", function()
+    local candidates = dictionary.lookup("かんじ")
+    candidates[1] = "破損"
+    equal(dictionary.lookup("かんじ"), { "漢字", "幹事", "感じ", "注目;注釈" })
+  end)
+
   test("numeric lookup applies dictionary placeholders", function()
     equal(dictionary.lookup_any({ { key = "だい#かい", numbers = { "5" } } }), { "第５回", "第五回" })
   end)

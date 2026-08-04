@@ -17,7 +17,7 @@ Neovim専用のPure Lua SKKです。挿入モードとコマンドラインモ�
 
 - Neovim 0.10以降
 - 生成済みJSON辞書
-- 辞書をダウンロードする場合のみNode.js 18以降
+- 辞書をダウンロードする場合のみ `curl`（Windows 10以降には標準搭載）
 
 ## インストール
 
@@ -60,6 +60,8 @@ require("skk_lite").setup({
   -- dictionary_files = { "SKK-JISYO.L", "SKK-JISYO.jinmei" },
 
   state_path = vim.fn.stdpath("data") .. "/skk-lite/state.json",
+  -- 学習データを書き出すまでの待ち時間（ミリ秒）
+  state_save_delay = 200,
   mappings = true,
 })
 ```
@@ -85,7 +87,7 @@ nvim-data/
 :SkkLiteInstallDictionary
 ```
 
-保存先を指定する場合は `:SkkLiteInstallDictionary C:/skk/dictionary` のように指定できます。辞書のダウンロードにのみNode.js 18以降が必要です。
+保存先を指定する場合は `:SkkLiteInstallDictionary C:/skk/dictionary` のように指定できます。辞書のダウンロードには `curl` を使用し、Node.js、Denops、gzipは必要ありません。
 
 ### ダウンロードとJSON生成を個別に行う
 
@@ -105,7 +107,7 @@ nvim-data/
 
 ### ダウンロード
 
-`:SkkLiteDownloadDictionary` は [dictionary_sources.json](dictionary_sources.json) に定義された以下の辞書を公式配布元から取得し、`.gz` を展開します。
+`:SkkLiteDownloadDictionary` は [dictionary_sources.json](dictionary_sources.json) に定義された以下の辞書を公式リポジトリから取得します。未圧縮ファイルを直接取得するため、展開ツールは不要です。
 
 - `SKK-JISYO.L`
 - `SKK-JISYO.geo`
@@ -131,9 +133,9 @@ nvim-data/
 
 プラグインのルートディレクトリで実行します。
 
-```powershell
-node scripts/download_dictionary.js --output C:\skk\dictionary
-nvim --headless -u NONE -l scripts/compile_dictionary.lua C:\skk\dictionary
+```sh
+nvim --headless -u NONE -l scripts/download_dictionary.lua /path/to/skk/dictionary
+nvim --headless -u NONE -l scripts/compile_dictionary.lua /path/to/skk/dictionary
 ```
 
 ## 基本操作
@@ -159,6 +161,12 @@ nvim --headless -u NONE -l scripts/compile_dictionary.lua C:\skk\dictionary
 `n` は次の入力を待ち、`nn` で `ん` を確定します。たとえば `funniki` は `ふんいき`、`nna` は `んあ` になります。Space、Enter、数字、モード切替の前でも保留中の `n` は `ん` として確定します。
 
 コマンドラインは通常のASCII入力で開始します。日本語を入力するときだけ `<C-j>` を押してください。コマンドラインを閉じるとSKKマッピングは撤去されます。
+
+### キーマッピングと補完プラグイン
+
+`mappings = true` の場合、通常時に設定する挿入モードマッピングはバッファローカルの `<C-j>` だけです。SKKを有効にしている間だけ、そのバッファの入力キーをSKKが受け取り、無効化時に既存のバッファローカルマッピングを復元します。コマンドラインの既存マッピングも同様に、SKK終了時に復元します。
+
+SKK有効中は文字キー、`<CR>`、`<Tab>`などをSKKが優先するため、nvim-cmp、blink.cmp、autopairs、snippetの同じキーに対する処理は動作しません。独自に統合する場合は `mappings = false` にして、`:SkkLiteEnable`、`:SkkLiteDisable`、`:SkkLiteToggle` を利用してください。`setup()` は再実行できるため、自動ロード後に `mappings = false` を指定しても既定マッピングは撤去されます。
 
 ## 単語登録
 
@@ -186,6 +194,16 @@ nvim --headless -u NONE -l scripts/compile_dictionary.lua C:\skk\dictionary
 
 ## テスト
 
+Linux / macOS:
+
+```sh
+plugin="$PWD"
+nvim --clean --headless --cmd "set runtimepath+=$plugin" \
+  -c "lua dofile('$plugin/tests/run.lua')" -c "qa!"
+```
+
+Windows PowerShell:
+
 ```powershell
 $plugin = (Resolve-Path .).Path
 $runner = Join-Path $plugin 'tests\run.lua'
@@ -193,4 +211,4 @@ nvim --clean --headless --cmd "set runtimepath+=$plugin" `
   -c "lua dofile([[$runner]])" -c "qa!"
 ```
 
-辞書コンパイラ、EUC-JP変換、入力エンジン、登録UI、コマンドラインを含む70テストがあります。
+辞書コンパイラ、EUC-JP変換、入力エンジン、永続化、登録UI、コマンドラインをテストします。

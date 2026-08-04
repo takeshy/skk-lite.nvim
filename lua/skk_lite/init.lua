@@ -15,6 +15,7 @@ local config = {
   dictionary_encoding = "auto",
   dictionary_files = nil,
   state_path = nil,
+  state_save_delay = 200,
   mappings = true,
 }
 
@@ -24,6 +25,7 @@ local commandline_preedit = ""
 local suspended_buffers = {}
 local commandline_suspended = false
 local configured = false
+local sync_insert_mappings
 
 local function buffer_session(buffer)
   buffer = buffer or vim.api.nvim_get_current_buf()
@@ -179,6 +181,7 @@ local function open_registration(session, reading, kind, buffer, commandline_con
     if register_buffer and vim.api.nvim_buf_is_valid(register_buffer) then
       local nested = buffer_session(register_buffer)
       nested:enable()
+      sync_insert_mappings(register_buffer, true)
       ui.render(nested, "insert", register_buffer)
     end
   end)
@@ -203,6 +206,9 @@ function M._handle(kind, key, modifiers, fallback)
     commandline_context = commandline_context_without_preedit(commandline_context, previous_commandline_preedit)
   end
   local result = session:handle(key, modifiers)
+  if kind == "insert" and sync_insert_mappings then
+    sync_insert_mappings(buffer, session.state.enabled)
+  end
   render_later(session, kind, buffer)
   if result.register then
     if kind == "insert" and vim.bo[buffer].filetype == "skk-lite-register" then
@@ -235,6 +241,8 @@ function M._handle(kind, key, modifiers, fallback)
 end
 
 local commandline_mappings_installed = false
+local commandline_saved_mappings = {}
+local insert_mapping_states = {}
 local install_commandline_mappings
 local remove_commandline_mappings
 
@@ -260,7 +268,7 @@ local function each_mapping(callback)
   callback("<C-q>", "q", { ctrl = true }, "<C-q>")
 end
 
-local function set_mapping(mode, lhs, key, modifiers, fallback)
+local function set_mapping(mode, lhs, key, modifiers, fallback, buffer)
   local kind = mode == "i" and "insert" or "cmdline"
   if kind == "cmdline" then
     vim.keymap.set(mode, lhs, function()
@@ -279,6 +287,7 @@ local function set_mapping(mode, lhs, key, modifiers, fallback)
   vim.keymap.set(mode, lhs, function()
     return M._handle(kind, key, modifiers, fallback or lhs)
   end, {
+    buffer = buffer,
     expr = true,
     replace_keycodes = false,
     silent = true,
@@ -286,7 +295,132 @@ local function set_mapping(mode, lhs, key, modifiers, fallback)
   })
 end
 
+local function mapping_for(mode, lhs, buffer)
+  local mapping
+  local function read()
+    mapping = vim.fn.maparg(lhs, mode, false, true)
+  end
+  if buffer then
+    vim.api.nvim_buf_call(buffer, read)
+    if type(mapping) ~= "table" or mapping.buffer ~= 1 then
+      return false
+    end
+  else
+    read()
+    if type(mapping) ~= "table" or mapping.buffer == 1 then
+      return false
+    end
+  end
+  return mapping.lhs and mapping.lhs ~= "" and vim.deepcopy(mapping) or false
+end
+
+local function restore_mapping(mode, lhs, saved, buffer)
+  pcall(vim.keymap.del, mode, lhs, buffer and { buffer = buffer } or {})
+  if saved then
+    local function restore()
+      vim.fn.mapset(mode, 0, saved)
+    end
+    if buffer and vim.api.nvim_buf_is_valid(buffer) then
+      vim.api.nvim_buf_call(buffer, restore)
+    elseif not buffer then
+      restore()
+    end
+  end
+end
+
+local function take_commandline_mapping(lhs)
+  if commandline_saved_mappings[lhs] == nil then
+    commandline_saved_mappings[lhs] = mapping_for("c", lhs)
+  end
+end
+
+local function restore_commandline_mapping(lhs)
+  local saved = commandline_saved_mappings[lhs]
+  if saved ~= nil then
+    restore_mapping("c", lhs, saved)
+    commandline_saved_mappings[lhs] = nil
+  end
+end
+
+local function insert_mapping_state(buffer)
+  local current = insert_mapping_states[buffer]
+  if not current then
+    current = { active = false, saved = {} }
+    insert_mapping_states[buffer] = current
+  end
+  return current
+end
+
+local function take_insert_mapping(buffer, lhs)
+  local current = insert_mapping_state(buffer)
+  if current.saved[lhs] == nil then
+    current.saved[lhs] = mapping_for("i", lhs, buffer)
+  end
+end
+
+local function restore_insert_mapping(buffer, lhs)
+  local current = insert_mapping_states[buffer]
+  if not current or current.saved[lhs] == nil then
+    return
+  end
+  restore_mapping("i", lhs, current.saved[lhs], buffer)
+  current.saved[lhs] = nil
+end
+
+local function install_insert_toggle(buffer)
+  if not vim.api.nvim_buf_is_valid(buffer) then
+    return
+  end
+  take_insert_mapping(buffer, "<C-j>")
+  set_mapping("i", "<C-j>", "j", { ctrl = true }, "<C-j>", buffer)
+end
+
+local function install_insert_mappings(buffer)
+  local current = insert_mapping_state(buffer)
+  if current.active then
+    return
+  end
+  local registration_buffer = vim.bo[buffer].filetype == "skk-lite-register"
+  each_mapping(function(lhs, key, modifiers, fallback)
+    -- The registration UI owns Enter/Escape/Ctrl-G so it can first commit
+    -- pending composition and then accept or cancel the registered word.
+    if not registration_buffer or (lhs ~= "<CR>" and lhs ~= "<Esc>" and lhs ~= "<C-g>") then
+      take_insert_mapping(buffer, lhs)
+      set_mapping("i", lhs, key, modifiers, fallback, buffer)
+    end
+  end)
+  current.active = true
+end
+
+local function remove_insert_mappings(buffer, keep_toggle)
+  local current = insert_mapping_states[buffer]
+  if not current then
+    return
+  end
+  each_mapping(function(lhs)
+    restore_insert_mapping(buffer, lhs)
+  end)
+  current.active = false
+  if keep_toggle and vim.api.nvim_buf_is_valid(buffer) then
+    install_insert_toggle(buffer)
+  elseif not next(current.saved) then
+    insert_mapping_states[buffer] = nil
+  end
+end
+
+sync_insert_mappings = function(buffer, enabled)
+  if not config.mappings or not buffer then
+    return
+  end
+  if enabled then
+    install_insert_mappings(buffer)
+  else
+    remove_insert_mappings(buffer, true)
+  end
+end
+
 local function install_commandline_toggle()
+  take_commandline_mapping("<C-j>")
   vim.keymap.set("c", "<C-j>", function()
     local output = M._handle("cmdline", "j", { ctrl = true }, "<C-j>")
     if get_session("cmdline").state.enabled then
@@ -306,6 +440,7 @@ install_commandline_mappings = function()
     return
   end
   each_mapping(function(lhs, key, modifiers, fallback)
+    take_commandline_mapping(lhs)
     set_mapping("c", lhs, key, modifiers, fallback)
   end)
   commandline_mappings_installed = true
@@ -314,18 +449,45 @@ end
 remove_commandline_mappings = function()
   if commandline_mappings_installed then
     each_mapping(function(lhs)
-      pcall(vim.keymap.del, "c", lhs)
+      restore_commandline_mapping(lhs)
     end)
     commandline_mappings_installed = false
   end
   install_commandline_toggle()
 end
 
-local function install_mappings()
-  each_mapping(function(lhs, key, modifiers, fallback)
-    set_mapping("i", lhs, key, modifiers, fallback)
-  end)
-  install_commandline_toggle()
+local function install_mappings(buffer)
+  buffer = buffer or vim.api.nvim_get_current_buf()
+  local session = sessions[buffer]
+  if session and session.state.enabled then
+    install_insert_mappings(buffer)
+  else
+    install_insert_toggle(buffer)
+  end
+  if commandline_session and commandline_session.state.enabled then
+    install_commandline_mappings()
+  else
+    install_commandline_toggle()
+  end
+end
+
+local function remove_all_mappings()
+  local buffers = vim.tbl_keys(insert_mapping_states)
+  for _, buffer in ipairs(buffers) do
+    if vim.api.nvim_buf_is_valid(buffer) then
+      remove_insert_mappings(buffer, false)
+    else
+      insert_mapping_states[buffer] = nil
+    end
+  end
+  if commandline_mappings_installed then
+    each_mapping(function(lhs)
+      restore_commandline_mapping(lhs)
+    end)
+    commandline_mappings_installed = false
+  else
+    restore_commandline_mapping("<C-j>")
+  end
 end
 
 function M.enable(kind)
@@ -333,6 +495,9 @@ function M.enable(kind)
   local buffer = kind == "insert" and vim.api.nvim_get_current_buf() or nil
   local session = get_session(kind, buffer)
   session:enable()
+  if kind == "insert" and config.mappings then
+    install_insert_mappings(buffer)
+  end
   if kind == "cmdline" and config.mappings then
     install_commandline_mappings()
   end
@@ -344,6 +509,9 @@ function M.disable(kind)
   local buffer = kind == "insert" and vim.api.nvim_get_current_buf() or nil
   local session = get_session(kind, buffer)
   session:disable()
+  if kind == "insert" and config.mappings then
+    remove_insert_mappings(buffer, true)
+  end
   if kind == "cmdline" and config.mappings then
     remove_commandline_mappings()
   end
@@ -412,32 +580,91 @@ function M.compile_dictionary(directory)
   return result
 end
 
-function M.download_dictionary(directory, on_complete)
+local function dictionary_sources()
+  local paths = vim.api.nvim_get_runtime_file("dictionary_sources.json", false)
+  if #paths == 0 then
+    return nil, "dictionary_sources.json が見つかりません"
+  end
+  local file, open_error = io.open(paths[1], "rb")
+  if not file then
+    return nil, open_error
+  end
+  local content = file:read("*a")
+  file:close()
+  local ok, decoded = pcall(vim.json.decode, content)
+  if not ok or type(decoded) ~= "table" or type(decoded.sourceBaseUrl) ~= "string"
+      or type(decoded.dictionaries) ~= "table" then
+    return nil, "dictionary_sources.json が不正です"
+  end
+  for _, name in ipairs(decoded.dictionaries) do
+    if type(name) ~= "string" or name == "" or vim.fs.basename(name) ~= name then
+      return nil, "辞書名が不正です: " .. tostring(name)
+    end
+  end
+  return decoded
+end
+
+function M.download_dictionary(directory, on_complete, on_error)
   use_dictionary_directory(directory)
-  local node = vim.fn.exepath("node")
-  if node == "" then
-    vim.notify("skk-lite: node が見つかりません", vim.log.levels.ERROR)
+  local curl = vim.fn.exepath("curl")
+  if curl == "" then
+    vim.notify("skk-lite: curl が見つかりません", vim.log.levels.ERROR)
+    if on_error then
+      on_error()
+    end
     return nil
   end
-  local scripts = vim.api.nvim_get_runtime_file("scripts/download_dictionary.js", false)
-  if #scripts == 0 then
-    vim.notify("skk-lite: download_dictionary.js が見つかりません", vim.log.levels.ERROR)
+  local sources, sources_error = dictionary_sources()
+  if not sources then
+    vim.notify("skk-lite: " .. tostring(sources_error), vim.log.levels.ERROR)
+    if on_error then
+      on_error()
+    end
     return nil
   end
   vim.fn.mkdir(config.dictionary_dir, "p")
   vim.notify("skk-lite: 辞書をダウンロードしています: " .. config.dictionary_dir, vim.log.levels.INFO)
-  return vim.system({ node, scripts[1], "--output", config.dictionary_dir }, { text = true }, vim.schedule_wrap(function(result)
-    if result.code == 0 then
+  local index = 0
+  local current_job
+  local function fail(message)
+    vim.notify("skk-lite: 辞書のダウンロードに失敗しました: " .. message, vim.log.levels.ERROR)
+    if on_error then
+      on_error()
+    end
+  end
+  local function download_next()
+    index = index + 1
+    local name = sources.dictionaries[index]
+    if not name then
       if on_complete then
         on_complete()
       else
         vim.notify("skk-lite: 辞書をダウンロードしました。:SkkLiteCompileDictionary を実行してください", vim.log.levels.INFO)
       end
-    else
-      local message = vim.trim(result.stderr or result.stdout or "download failed")
-      vim.notify("skk-lite: 辞書のダウンロードに失敗しました: " .. message, vim.log.levels.ERROR)
+      return
     end
-  end))
+    local output_path = vim.fs.joinpath(config.dictionary_dir, name)
+    local temporary_path = output_path .. ".tmp"
+    local url = sources.sourceBaseUrl:gsub("/+$", "") .. "/" .. name
+    current_job = vim.system({ curl, "--fail", "--location", "--silent", "--show-error", "--output", temporary_path, url }, {
+      text = true,
+    }, vim.schedule_wrap(function(download_result)
+      if download_result.code ~= 0 then
+        os.remove(temporary_path)
+        fail(vim.trim(download_result.stderr or "curl failed"))
+        return
+      end
+      local renamed, rename_error = vim.uv.fs_rename(temporary_path, output_path)
+      if not renamed then
+        os.remove(temporary_path)
+        fail(tostring(rename_error))
+        return
+      end
+      download_next()
+    end))
+  end
+  download_next()
+  return current_job
 end
 
 function M.install_dictionary(directory)
@@ -451,6 +678,9 @@ end
 
 function M.setup(options)
   local was_configured = configured
+  if configured and config.mappings then
+    remove_all_mappings()
+  end
   configured = true
   options = options or {}
   config = vim.tbl_deep_extend("force", config, options)
@@ -462,7 +692,7 @@ function M.setup(options)
   else
     config.dictionary_path = vim.fs.normalize(vim.fn.expand(config.dictionary_path))
   end
-  store.setup({ path = config.state_path })
+  store.setup({ path = config.state_path, save_delay = config.state_save_delay })
   dictionary.setup({ path = config.dictionary_path, store = store })
   ui.setup()
   if config.mappings then
@@ -474,28 +704,28 @@ function M.setup(options)
 
   vim.api.nvim_create_user_command("SkkLiteEnable", function()
     M.enable()
-  end, {})
+  end, { force = true })
   vim.api.nvim_create_user_command("SkkLiteDisable", function()
     M.disable()
-  end, {})
+  end, { force = true })
   vim.api.nvim_create_user_command("SkkLiteToggle", function()
     M.toggle()
-  end, {})
+  end, { force = true })
   vim.api.nvim_create_user_command("SkkLiteHealth", function()
     M.health()
-  end, {})
+  end, { force = true })
   vim.api.nvim_create_user_command("SkkLiteDownloadDictionary", function(command)
     M.download_dictionary(command.args ~= "" and command.args or nil)
-  end, { nargs = "?", complete = "dir" })
+  end, { nargs = "?", complete = "dir", force = true })
   vim.api.nvim_create_user_command("SkkLiteInstallDictionary", function(command)
     M.install_dictionary(command.args ~= "" and command.args or nil)
-  end, { nargs = "?", complete = "dir" })
+  end, { nargs = "?", complete = "dir", force = true })
   vim.api.nvim_create_user_command("SkkLiteCompileDictionary", function(command)
     local ok, result = pcall(M.compile_dictionary, command.args ~= "" and command.args or nil)
     if not ok then
       vim.notify("skk-lite: 辞書を生成できません: " .. tostring(result), vim.log.levels.ERROR)
     end
-  end, { nargs = "?", complete = "dir" })
+  end, { nargs = "?", complete = "dir", force = true })
 
   local group = vim.api.nvim_create_augroup("skk_lite", { clear = true })
   vim.api.nvim_create_autocmd("User", {
@@ -511,7 +741,21 @@ function M.setup(options)
     group = group,
     callback = function(event)
       sessions[event.buf] = nil
+      insert_mapping_states[event.buf] = nil
       ui.clear("insert", event.buf)
+    end,
+  })
+  vim.api.nvim_create_autocmd("BufEnter", {
+    group = group,
+    callback = function(event)
+      if config.mappings then
+        local session = sessions[event.buf]
+        if session and session.state.enabled then
+          install_insert_mappings(event.buf)
+        else
+          install_insert_toggle(event.buf)
+        end
+      end
     end,
   })
   vim.api.nvim_create_autocmd("InsertLeave", {
