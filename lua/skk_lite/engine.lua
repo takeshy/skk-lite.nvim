@@ -138,9 +138,12 @@ function M.fold_okuri_into_stem(state)
   if (not state.okuri_key or state.okuri_key == "") and (not state.okuri_kana or state.okuri_kana == "") then
     return false
   end
+  state.roman = ""
   state.kana = (state.kana or "") .. (state.okuri_kana or "")
   state.okuri_key = ""
   state.okuri_kana = ""
+  state.sticky_okuri = false
+  M.invalidate_candidates(state)
   return true
 end
 

@@ -174,6 +174,23 @@ function M.run(test)
     equal(current.kana, "ようきろく")
   end)
 
+  test("folding okuri also clears pending roman and stale candidates", function()
+    local current = state()
+    current.kana = "かんが"
+    current.okuri_key = "e"
+    current.okuri_kana = "え"
+    current.roman = "z"
+    current.candidates = { "考え" }
+    current.candidate_index = 2
+    current.showing_candidate = true
+    equal(engine.fold_okuri_into_stem(current), true)
+    equal(current.kana, "かんがえ")
+    equal(current.roman, "")
+    equal(current.candidates, {})
+    equal(current.candidate_index, 1)
+    equal(current.showing_candidate, false)
+  end)
+
   test("numeric candidates substitute all styles", function()
     equal(engine.apply_numeric_candidate("第#0回", { "5" }), "第5回")
     equal(engine.apply_numeric_candidate("第#1回", { "5" }), "第５回")

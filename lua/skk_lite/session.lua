@@ -486,6 +486,16 @@ function Session:handle(key, modifiers)
     return self:result({ handled = false })
   end
   if modifiers.ctrl and key:lower() == "g" then
+    -- Before candidates are shown, Ctrl+G on an okuri-ari reading folds the
+    -- okurigana back into the stem so it converts as one okuri-nasi heading
+    -- (mirrors omarchy foldOkuriIntoReading), instead of discarding the
+    -- whole composition.
+    if state.composing and not state.showing_candidate
+        and (state.okuri_key ~= "" or state.okuri_kana ~= "") then
+      engine.fold_okuri_into_stem(state)
+      state.mode = engine.STATE.SKK_HENKAN
+      return self:result({ handled = true })
+    end
     return self:result({ handled = self:cancel_candidates() })
   end
   if modifiers.ctrl and key:lower() == "q" then

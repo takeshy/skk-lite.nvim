@@ -258,6 +258,19 @@ function M.run(test)
     equal(h.output(), "走る")
   end)
 
+  test("Ctrl+G folds an in-progress okuri-ari reading back to okuri-nasi", function()
+    local h = harness()
+    h.type("KanjiR") -- ▽かんじ* with the okurigana romaji "r" still pending
+    local result = h.press("g", { ctrl = true })
+    equal(result.preedit, "▽かんじ")
+    equal(h.session.state.okuri_key, "")
+    equal(h.session.state.roman, "")
+    equal(h.session.state.composing, true)
+    -- The folded reading now converts as a single okuri-nasi heading.
+    h.press(" ")
+    equal(h.session:candidate_text(), "感じ")
+  end)
+
   test("numeric conversion preserves candidate styles", function()
     local h = harness()
     h.type("Dai5kai")
