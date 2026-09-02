@@ -157,6 +157,29 @@ function M.run(test)
     equal(session.state.kana, "きゃんせる")
   end)
 
+  test("Ctrl-G progressively cancels registration input", function()
+    vim.cmd("enew!")
+    local session = skk._buffer_session()
+    session:enable()
+    local register_buffer = open_missing_registration(session, "だんかい")
+    local nested = skk._buffer_session(register_buffer)
+    nested:start_composition()
+    nested.state.kana = "へんかん"
+
+    local cancel = buffer_mapping(register_buffer, "<C-g>")
+    cancel()
+    assert(register.active() ~= nil, "registration closed while composition remained")
+    equal(nested.state.composing, false)
+
+    nested.state.roman = "k"
+    cancel()
+    assert(register.active() ~= nil, "registration closed while romaji remained")
+    equal(nested.state.roman, "")
+
+    cancel()
+    equal(register.active(), nil)
+  end)
+
   test("registration closes the exhausted candidate popup", function()
     vim.cmd("enew!")
     local origin = vim.api.nvim_get_current_buf()

@@ -111,6 +111,13 @@ function M.open(options)
     end
   end
 
+  local function cancel_progressively()
+    if options.prepare_cancel and not options.prepare_cancel(buffer) then
+      return
+    end
+    cancel()
+  end
+
   local function accept()
     if options.prepare and not options.prepare(buffer) then
       return
@@ -137,7 +144,7 @@ function M.open(options)
 
   vim.keymap.set("i", "<CR>", accept, { buffer = buffer, silent = true })
   vim.keymap.set("i", "<Esc>", cancel, { buffer = buffer, silent = true })
-  vim.keymap.set("i", "<C-g>", cancel, { buffer = buffer, silent = true })
+  vim.keymap.set("i", "<C-g>", cancel_progressively, { buffer = buffer, silent = true })
   if llm_ok and type(llm_rewrite.suggest) == "function" then
     vim.keymap.set({ "i", "n" }, "<C-l>", suggest_with_llm, {
       buffer = buffer,
@@ -147,7 +154,7 @@ function M.open(options)
   end
   vim.keymap.set("n", "<CR>", accept, { buffer = buffer, silent = true })
   vim.keymap.set("n", "q", cancel, { buffer = buffer, silent = true })
-  vim.keymap.set("n", "<C-g>", cancel, { buffer = buffer, silent = true })
+  vim.keymap.set("n", "<C-g>", cancel_progressively, { buffer = buffer, silent = true })
   vim.cmd("startinsert")
   return buffer
 end

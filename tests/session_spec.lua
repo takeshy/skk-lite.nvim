@@ -248,6 +248,18 @@ function M.run(test)
     equal(h.output(), "走る")
   end)
 
+  test("okuri registration displays the reading and appends okurigana", function()
+    local h = harness()
+    h.session:start_composition()
+    h.session.state.kana = "まげ"
+    h.session.state.okuri_key = "r"
+    h.session.state.okuri_kana = "る"
+    equal(h.session:registration_reading(), "まげ*る")
+    local result = h.session:register_word("曲げ")
+    equal(result.insert, "曲げる")
+    equal(h.dictionary.user["まげr"], "曲げ")
+  end)
+
   test("sticky shift starts okuri", function()
     local h = harness()
     h.press(";")

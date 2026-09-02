@@ -426,9 +426,18 @@ function Session:register_word(word)
   if key == "" or word == "" then
     return self:result({ handled = true })
   end
+  local okuri = self.state.okuri_kana
   self.dictionary.register(key, word)
   self:clear_composition()
-  return self:result({ insert = word })
+  return self:result({ insert = word .. okuri })
+end
+
+function Session:registration_reading()
+  local state = self.state
+  if state.okuri_key ~= "" then
+    return state.kana .. "*" .. state.okuri_kana
+  end
+  return engine.lookup_key(state)
 end
 
 function Session:cancel_registration()

@@ -127,8 +127,9 @@ local function open_registration(session, reading, kind, buffer, commandline_con
     -- outer session.  Remove it before opening the registration window so it
     -- cannot remain behind the window or reappear on the next input.
     ui.clear(kind, buffer)
+    local display_reading = session:registration_reading()
     local register_buffer = register.open({
-      reading = reading,
+      reading = display_reading ~= "" and display_reading or reading,
       prepare = function(register_buffer)
         local nested = buffer_session(register_buffer)
         if nested.state.composing or nested.state.roman ~= "" then
@@ -176,6 +177,20 @@ local function open_registration(session, reading, kind, buffer, commandline_con
           restore_commandline(commandline_context, "")
         end
         render_later(session, kind, buffer)
+      end,
+      prepare_cancel = function(register_buffer)
+        local nested = buffer_session(register_buffer)
+        if nested.state.composing then
+          nested:handle("g", { ctrl = true })
+          ui.render(nested, "insert", register_buffer)
+          return false
+        end
+        if nested.state.roman ~= "" then
+          nested.state.roman = ""
+          ui.render(nested, "insert", register_buffer)
+          return false
+        end
+        return true
       end,
     })
     if register_buffer and vim.api.nvim_buf_is_valid(register_buffer) then
