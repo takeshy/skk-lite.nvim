@@ -15,6 +15,7 @@ local function fake_dictionary()
     ["はしr"] = { "走" },
     ["だい#かい"] = { "第#1回", "第#3回" },
     ["かんじ"] = { "感じ", "漢字" },
+    ["わたし"] = { "私" },
     ["おおい"] = { "多い", "多飯", "大井", "覆い", "オオイ", "凡い", "鸁い", "飫い", "都比", "邑伊", "于" },
     ["ちゅうもく"] = { "注目;ちゅうもく注釈" },
     MCP = { "Model Context Protocol" },
@@ -315,6 +316,14 @@ function M.run(test)
     h.press(" ")
     h.type("a")
     equal(h.output(), "感じあ")
+  end)
+
+  test("literal punctuation after a candidate commits it and is preserved", function()
+    local h = harness()
+    h.type("Watashi")
+    h.press(" ")
+    h.type("(no(")
+    equal(h.output(), "私(の(")
   end)
 
   test("candidate paging and direct selection", function()
