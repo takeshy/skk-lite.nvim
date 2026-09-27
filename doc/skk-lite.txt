@@ -36,6 +36,20 @@ setup() を省略した場合も上記と同じ既定値で自動設定されま
 dictionary_encoding は "auto"（既定）、"euc-jp"、"utf-8" を指定できます。
 学習データは state_save_delay ミリ秒（既定200）にまとめ、原子的に保存します。
 
+SKK状態はMessageではなくステータスラインに表示します。'statusline' が
+未設定の場合に限り、ファイル名・SKK状態・カーソル位置を自動設定します。
+setup({ statusline = false }) で自動設定を無効にできます。
+既存のステータスラインには次の項目を追加してください: >
+
+  %{v:lua.require("skk_lite").statusline()}
+<
+lualine等では次のLua関数をコンポーネントとして指定できます: >lua
+
+  function() return require("skk_lite").statusline() end
+<
+表示対象のウィンドウに対応したSKK状態を返します。
+ステータスラインを非表示にしている場合は 'laststatus' を2または3にします。
+
 ==============================================================================
 3. DICTIONARY                                      *skk-lite-dictionary*
 

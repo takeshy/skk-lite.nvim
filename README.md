@@ -63,6 +63,7 @@ require("skk_lite").setup({
   -- 学習データを書き出すまでの待ち時間（ミリ秒）
   state_save_delay = 200,
   mappings = true,
+  statusline = true,
 })
 ```
 
@@ -193,6 +194,23 @@ SKK有効中は文字キー、`<CR>`、`<Tab>`などをSKKが優先するため�
 | `:SkkLiteDownloadDictionary [directory]` | 辞書を取得・展開 |
 | `:SkkLiteCompileDictionary [directory]` | `SKK-JISYO*` をJSONへ変換 |
 
+現在の入力状態はステータスラインに表示します。Messageには出力しません。
+`statusline` が未設定の場合は、ファイル名・SKK状態・カーソル位置を表示する標準の構成を自動設定します。
+既存のステータスライン設定がある場合は、その設定に次の項目を追加してください。
+
+```vim
+%{v:lua.require("skk_lite").statusline()}
+```
+
+lualineを使う場合は、既存の `sections.lualine_x` などに次の関数を追加します。
+
+```lua
+function() return require("skk_lite").statusline() end,
+```
+
+`setup({ statusline = false })` で標準ステータスラインの自動設定を無効にできます。
+ステータスラインを非表示にしている場合は `vim.opt.laststatus = 2`（常時表示）、
+または `3`（画面全体で1本）を設定してください。
 現在の入力状態は `vim.g.skk_lite_mode` でも参照できます。詳細なヘルプは `:help skk-lite` で開けます。
 
 ## テスト

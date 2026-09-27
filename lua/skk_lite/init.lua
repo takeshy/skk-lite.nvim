@@ -17,6 +17,7 @@ local config = {
   state_path = nil,
   state_save_delay = 200,
   mappings = true,
+  statusline = true,
 }
 
 local sessions = {}
@@ -550,6 +551,20 @@ function M.status()
   return get_session(kind, buffer):mode_text()
 end
 
+-- Statusline evaluation may target an inactive window. Avoid creating sessions
+-- just to display its state, and keep each window's mode independent.
+function M.statusline()
+  local window = tonumber(vim.g.statusline_winid) or vim.api.nvim_get_current_win()
+  if not vim.api.nvim_win_is_valid(window) then
+    return "SKK OFF"
+  end
+  local session = sessions[vim.api.nvim_win_get_buf(window)]
+  if window == vim.api.nvim_get_current_win() and vim.fn.getcmdtype() ~= "" then
+    session = commandline_session
+  end
+  return session and session:mode_text() or "SKK OFF"
+end
+
 function M.health()
   local stats = dictionary.stats()
   local lines = {
@@ -709,7 +724,7 @@ function M.setup(options)
   end
   store.setup({ path = config.state_path, save_delay = config.state_save_delay })
   dictionary.setup({ path = config.dictionary_path, store = store })
-  ui.setup()
+  ui.setup(config)
   if config.mappings then
     install_mappings()
   end

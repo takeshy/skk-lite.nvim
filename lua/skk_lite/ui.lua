@@ -4,7 +4,9 @@ local M = {}
 
 local namespace = vim.api.nvim_create_namespace("skk-lite")
 local floats = {}
-local last_modes = {}
+local default_statusline = vim.api.nvim_get_option_info2("statusline", {}).default
+local statusline = (default_statusline ~= "" and default_statusline or "%f %h%m%r%=%l,%c %P")
+  .. '  %{v:lua.require("skk_lite").statusline()}'
 
 local function valid_window(window)
   return window and vim.api.nvim_win_is_valid(window)
@@ -108,7 +110,13 @@ local function show_float(key, lines, kind)
   floats[key] = { window = window, buffer = buffer }
 end
 
-function M.setup()
+function M.setup(options)
+  options = options or {}
+  if options.statusline ~= false and (vim.go.statusline == "" or vim.go.statusline == default_statusline) then
+    vim.go.statusline = statusline
+  elseif options.statusline == false and vim.go.statusline == statusline then
+    vim.go.statusline = default_statusline
+  end
   vim.api.nvim_set_hl(0, "SkkLitePreedit", { link = "IncSearch", default = true })
   vim.api.nvim_set_hl(0, "SkkLiteCandidate", { link = "Pmenu", default = true })
   vim.api.nvim_set_hl(0, "SkkLiteBorder", { link = "PmenuSbar", default = true })
@@ -146,16 +154,13 @@ function M.render(session, kind, buffer)
   end
   local mode = session:mode_text()
   vim.g.skk_lite_mode = mode
-  if session.state.enabled and kind ~= "cmdline" and last_modes[key] ~= mode then
-    pcall(vim.api.nvim_echo, { { mode, "ModeMsg" } }, false, {})
-  end
-  last_modes[key] = mode
+  vim.cmd("redrawstatus")
 end
 
 function M.clear(kind, buffer)
   local key = kind == "cmdline" and "cmdline" or tostring(buffer)
   close_float(key)
-  last_modes[key] = nil
+  vim.cmd("redrawstatus")
   if buffer and vim.api.nvim_buf_is_valid(buffer) then
     vim.api.nvim_buf_clear_namespace(buffer, namespace, 0, -1)
   end

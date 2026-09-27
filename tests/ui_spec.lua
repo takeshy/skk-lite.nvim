@@ -17,6 +17,38 @@ local function preedit_chunk(buffer)
 end
 
 function M.run(test)
+  test("statusline setup preserves custom formats and can be disabled", function()
+    local previous = vim.go.statusline
+    vim.go.statusline = ""
+    ui.setup()
+    assert(vim.go.statusline:find('require("skk_lite").statusline()', 1, true))
+    local installed = vim.go.statusline
+    ui.setup()
+    equal(vim.go.statusline, installed)
+    ui.setup({ statusline = false })
+    equal(vim.go.statusline, vim.api.nvim_get_option_info2("statusline", {}).default)
+    vim.go.statusline = "%!CustomStatusline()"
+    ui.setup()
+    equal(vim.go.statusline, "%!CustomStatusline()")
+    vim.go.statusline = previous
+  end)
+
+  test("rendering mode changes does not emit messages", function()
+    local original = vim.api.nvim_echo
+    local messages = 0
+    vim.api.nvim_echo = function() messages = messages + 1 end
+    local session = Session.new({})
+    session:enable()
+    local ok, err = pcall(function()
+      ui.render(session, "insert", vim.api.nvim_get_current_buf())
+      session:handle("q")
+      ui.render(session, "insert", vim.api.nvim_get_current_buf())
+    end)
+    vim.api.nvim_echo = original
+    assert(ok, err)
+    equal(messages, 0)
+  end)
+
   test("plain pending consonants use normal text highlighting", function()
     local buffer = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_set_current_buf(buffer)

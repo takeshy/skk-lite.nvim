@@ -9,6 +9,28 @@ local function equal(actual, expected, message)
 end
 
 function M.run(test)
+  test("statusline shows the mode of the window being rendered", function()
+    local original_window = vim.api.nvim_get_current_win()
+    local original_target = vim.g.statusline_winid
+    vim.cmd("new")
+    local window = vim.api.nvim_get_current_win()
+    local buffer = vim.api.nvim_get_current_buf()
+    local session = skk._buffer_session(buffer)
+    session:enable()
+    vim.api.nvim_set_current_win(original_window)
+    vim.g.statusline_winid = window
+    equal(skk.statusline(), "SKK かな")
+    local rendered = vim.api.nvim_eval_statusline(
+      '%{v:lua.require("skk_lite").statusline()}', { winid = window }
+    )
+    equal(rendered.str, "SKK かな")
+    session:disable()
+    equal(skk.statusline(), "SKK OFF")
+    vim.g.statusline_winid = original_target
+    vim.api.nvim_win_close(window, true)
+    vim.api.nvim_buf_delete(buffer, { force = true })
+  end)
+
   test("command-line registration splices at the cursor", function()
     local line, position = skk._splice_commandline({ line = "abc", position = 1 }, "X")
     equal({ line, position }, { "Xabc", 2 })
