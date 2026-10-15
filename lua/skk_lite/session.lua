@@ -265,7 +265,7 @@ end
 
 function Session:lookup_candidates()
   local state = self.state
-  return self.dictionary.lookup_any(engine.lookup_keys(state))
+  return self.dictionary.lookup_any(engine.lookup_keys(state), state.okuri_kana)
 end
 
 function Session:auto_convert_okuri()
@@ -347,7 +347,7 @@ function Session:commit_candidate()
   local selected = raw and engine.candidate_word(raw) or ""
   local text = state.showing_candidate and self:candidate_text() or engine.preedit_kana(state)
   if selected ~= "" then
-    self.dictionary.remember(key, selected)
+    self.dictionary.remember(key, selected, state.okuri_kana)
   end
   self:clear_composition()
   return text
@@ -386,7 +386,7 @@ function Session:purge_candidate()
   end
   local key = engine.lookup_key(state)
   local candidate = engine.candidate_word(state.candidates[state.candidate_index])
-  self.dictionary.purge(key, candidate)
+  self.dictionary.purge(key, candidate, state.okuri_kana)
   local remaining = {}
   for _, item in ipairs(state.candidates) do
     if engine.candidate_word(item) ~= candidate then

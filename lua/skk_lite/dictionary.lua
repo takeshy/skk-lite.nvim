@@ -68,18 +68,25 @@ local function clear_key(key)
   state.cache[key] = nil
 end
 
-local function lookup_cached(key)
-  if state.cache[key] then
-    return state.cache[key]
+local function history_key(key, okuri)
+  return okuri and okuri ~= "" and (key .. "*" .. okuri) or key
+end
+
+local function lookup_cached(key, okuri)
+  okuri = okuri or ""
+  if state.cache[key] and state.cache[key][okuri] then
+    return state.cache[key][okuri]
   end
   load_base()
   local data = persistent_data()
   local candidates = merge({
-    data.history[key] or {},
+    -- Legacy okuri-ari history has no kana and must not affect every ending.
+    data.history[history_key(key, okuri)] or {},
     data.user_dict[key] or {},
     state.base and state.base[key] or {},
   })
-  state.cache[key] = candidates
+  state.cache[key] = state.cache[key] or {}
+  state.cache[key][okuri] = candidates
   return candidates
 end
 
@@ -101,17 +108,17 @@ function M.load()
   return ok
 end
 
-function M.lookup(key)
+function M.lookup(key, okuri)
   -- Candidates are strings, so a shallow copy protects the cache without the
   -- recursive cost of vim.deepcopy() on every conversion.
-  return vim.list_slice(lookup_cached(key))
+  return vim.list_slice(lookup_cached(key, okuri))
 end
 
-function M.lookup_any(key_specs)
+function M.lookup_any(key_specs, okuri)
   local result = {}
   local seen = {}
   for _, spec in ipairs(key_specs) do
-    for _, candidate in ipairs(lookup_cached(spec.key)) do
+    for _, candidate in ipairs(lookup_cached(spec.key, okuri)) do
       local converted = spec.numbers and engine.apply_numeric_candidate(candidate, spec.numbers) or candidate
       local candidate_word = word(converted)
       if candidate_word ~= "" and not seen[candidate_word] then
@@ -123,18 +130,19 @@ function M.lookup_any(key_specs)
   return result
 end
 
-function M.remember(key, candidate)
+function M.remember(key, candidate, okuri)
   if key == "" or candidate == "" or not state.store then
     return
   end
   local data = persistent_data()
+  local learned_key = history_key(key, okuri)
   local next_candidates = { candidate }
-  for _, existing in ipairs(data.history[key] or {}) do
+  for _, existing in ipairs(data.history[learned_key] or {}) do
     if existing ~= candidate and #next_candidates < 8 then
       table.insert(next_candidates, existing)
     end
   end
-  data.history[key] = next_candidates
+  data.history[learned_key] = next_candidates
   clear_key(key)
   state.store.save()
 end
@@ -155,19 +163,20 @@ function M.register(key, candidate)
   return state.store.save()
 end
 
-function M.purge(key, candidate)
+function M.purge(key, candidate, okuri)
   if key == "" or candidate == "" or not state.store then
     return false
   end
   local data = persistent_data()
   for _, field in ipairs({ "history", "user_dict" }) do
+    local field_key = field == "history" and history_key(key, okuri) or key
     local next_candidates = {}
-    for _, existing in ipairs(data[field][key] or {}) do
+    for _, existing in ipairs(data[field][field_key] or {}) do
       if word(existing) ~= candidate then
         table.insert(next_candidates, existing)
       end
     end
-    data[field][key] = #next_candidates > 0 and next_candidates or nil
+    data[field][field_key] = #next_candidates > 0 and next_candidates or nil
   end
   clear_key(key)
   return state.store.save()
